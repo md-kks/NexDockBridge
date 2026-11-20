@@ -11,7 +11,8 @@ static int prevCount=0, prevID=-1, clickCount[2]={0,0};
 static double previousClick[2]={0,0};
 static CGPoint previousClickPos[2];
 typedef struct {int id,x,y; BOOL tip;} Contact;
-static Contact frame[16];
+static Contact frame[16], previous[16];
+static int dragID=-1;
 static int expected=0, received=0, scan=-1;
 static double prevX,prevY,gestureStart,travel,scrollTravel,scrollRemainderX,scrollRemainderY;
 static unsigned long taps,scrolls;
@@ -39,6 +40,7 @@ static void postButton(BOOL right,BOOL down) {
 static void resetState(void) {
  if(leftDown)postButton(NO,NO);if(rightDown)postButton(YES,NO);
  leftDown=rightDown=gesture=physical=hadMulti=hadExtra=NO;prevCount=0;prevID=-1;remX=remY=0;expected=received=0;scan=-1;scrollRemainderX=scrollRemainderY=0;
+ memset(previous,0,sizeof(previous));dragID=-1;
 }
 static void movePointer(double dx,double dy) {
  CGPoint p=cursor(); p.x+=dx;p.y+=dy;
@@ -49,7 +51,7 @@ static void movePointer(double dx,double dy) {
  }
  CGEventType type=leftDown?kCGEventLeftMouseDragged:rightDown?kCGEventRightMouseDragged:kCGEventMouseMoved;
  CGEventRef e=CGEventCreateMouseEvent(NULL,type,p,rightDown?kCGMouseButtonRight:kCGMouseButtonLeft);
- if(e){CGEventSetIntegerValueField(e,kCGMouseEventDeltaX,(int64_t)dx);CGEventSetIntegerValueField(e,kCGMouseEventDeltaY,(int64_t)dy);CGEventPost(kCGHIDEventTap,e);CFRelease(e);moves++;}
+ if(e){if(leftDown||rightDown) CGEventSetIntegerValueField(e,kCGMouseEventClickState,clickCount[rightDown?1:0]);CGEventSetIntegerValueField(e,kCGMouseEventDeltaX,(int64_t)dx);CGEventSetIntegerValueField(e,kCGMouseEventDeltaY,(int64_t)dy);CGEventPost(kCGHIDEventTap,e);CFRelease(e);moves++;}
 }
 static void tap(BOOL right){
  postButton(right,YES);postButton(right,NO);taps++;
@@ -62,6 +64,36 @@ static void scrollPointer(double dx,double dy) {
  CGEventRef ev=CGEventCreateScrollWheelEvent(NULL,kCGScrollEventUnitPixel,2,y,x);
  if(ev){CGEventSetIntegerValueField(ev,kCGScrollWheelEventIsContinuous,1);CGEventPost(kCGHIDEventTap,ev);CFRelease(ev);scrolls++;}
 }
+// Physical button drag takes priority over multi-touch gestures.
+// Match consecutive samples by contact ID; a stationary thumb must not
+// halve the displacement of the finger that moves the pointer.
+static void pointerDelta(double dx,double dy) {
+ if(fabs(dx)>=500||fabs(dy)>=500)return;
+ double magnitude=hypot(dx,dy);travel+=magnitude;
+ double gain=speed*(1.0+fmin(magnitude/100.0,0.7));
+ remX+=dx*gain;remY+=dy*gain;
+ int mx=(int)remX,my=(int)remY;remX-=mx;remY-=my;
+ if(mx||my)movePointer(mx,my);
+}
+static void dragFrame(void) {
+ int best=-1;double bestDistance=-1,dx=0,dy=0;
+ for(int i=0;i<received;i++){
+  Contact c=frame[i];if(!c.tip||c.id<0||c.id>=16||!previous[c.id].tip)continue;
+  double mx=c.x-previous[c.id].x,my=c.y-previous[c.id].y;
+  if(fabs(mx)>=500||fabs(my)>=500)continue;
+  double distance=hypot(mx,my);
+  // Prefer the previously moving contact when its motion is comparable.
+  double score=distance+(c.id==dragID?2.0:0.0);
+  if(score>bestDistance){best=i;bestDistance=score;dx=mx;dy=my;}
+ }
+ if(best>=0){dragID=frame[best].id;pointerDelta(dx,dy);}
+}
+static void rememberContacts(void) {
+ memset(previous,0,sizeof(previous));
+ for(int i=0;i<received;i++){
+  Contact c=frame[i];if(c.tip&&c.id>=0&&c.id<16)previous[c.id]=c;
+ }
+}
 static void processFrame(void) {
  int count=0,first=-1; double x=0,y=0;
  for(int i=0;i<received;i++)if(frame[i].tip){if(first<0)first=i;count++;x+=frame[i].x;y+=frame[i].y;}
@@ -73,14 +105,16 @@ static void processFrame(void) {
    else if(hadMulti&&travel<35&&scrollTravel<35&&now-gestureStart<0.38)tap(YES);
   }
   gesture=physical=hadMulti=hadExtra=NO;prevCount=0;prevID=-1;remX=remY=0;scrollRemainderX=scrollRemainderY=0;
-  return;
+  rememberContacts();dragID=-1;return;
  }
  if(!gesture){
   gesture=YES;gestureStart=now;physical=leftDown||rightDown;hadMulti=hadExtra=NO;travel=scrollTravel=0;prevCount=0;prevID=-1;
  }
  if(count>=2)hadMulti=YES;
  if(count>2)hadExtra=YES;
- if(count==2&&!hadExtra){
+ if(leftDown||rightDown){
+  physical=YES;dragFrame();
+ }else if(count==2&&!hadExtra&&!physical){
   if(prevCount==2){
    double dx=x-prevX,dy=y-prevY;
    if(fabs(dx)<400&&fabs(dy)<400){
@@ -88,19 +122,14 @@ static void processFrame(void) {
     if(scrollTravel>16)scrollPointer(dx,dy);
    }
   }
- }else if(count==1&&!hadMulti){
+ }else if(count==1&&(!hadMulti||physical)){
   if(prevCount==1&&prevID==frame[first].id){
    double dx=x-prevX,dy=y-prevY;
-   if(fabs(dx)<500&&fabs(dy)<500){
-    double magnitude=hypot(dx,dy);travel+=magnitude;
-    double gain=speed*(1.0+fmin(magnitude/100.0,0.7));
-    remX+=dx*gain;remY+=dy*gain;
-    int mx=(int)remX,my=(int)remY;remX-=mx;remY-=my;
-    if(mx||my)movePointer(mx,my);
-   }
+   pointerDelta(dx,dy);
   }
  }
  prevCount=count;prevID=count==1?frame[first].id:-1;prevX=x;prevY=y;
+ rememberContacts();
 }
 static void input(void *c,IOReturn result,void *sender,IOHIDReportType type,uint32_t id,uint8_t*b,CFIndex n) {
  if(result||id!=0x1e||n<8||b[0]!=0x1e)return;
@@ -114,8 +143,8 @@ static void input(void *c,IOReturn result,void *sender,IOHIDReportType type,uint
   // The hardware emits 0x20 for left and 0x40 for right.
   BOOL left=(b[7]&0x20)!=0,right=(b[7]&0x40)!=0;
   if(left||right||leftDown||rightDown)physical=YES;
-  if(left!=leftDown){postButton(NO,left);leftDown=left;}
-  if(right!=rightDown){postButton(YES,right);rightDown=right;}
+  if(left!=leftDown){postButton(NO,left);leftDown=left;dragID=-1;}
+  if(right!=rightDown){postButton(YES,right);rightDown=right;dragID=-1;}
  }else if(expected<=0||time!=scan)return;
  if(received>=16)return;
  frame[received++]=(Contact){b[1]>>4,b[2]|((b[3]&15)<<8),(b[3]>>4)|(b[4]<<4),(b[1]&3)==3};

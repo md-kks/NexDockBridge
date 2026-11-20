@@ -15,10 +15,10 @@ NexDock officially lists the touchpad as incompatible with Apple devices: [NexDo
 - Relative pointer movement with adjustable speed.
 - Physical left and right click.
 - One-finger tap, two-finger tap, two-finger scrolling.
-- Double-click events and held-button dragging.
+- Double-click events and held-button dragging, including resizing windows with one finger holding the physical button and another moving.
 - Menu-bar pause/resume, counters and quit.
 
-Pointer movement and clicks have been confirmed on physical hardware. Advanced gestures, reconnect behavior, multiple displays and long-term reliability need more testing. The pointer currently stays within its current display.
+Pointer movement, clicks, scrolling and two-finger physical-button window resizing have been confirmed on the original test setup. Other devices, reconnect behavior, multiple displays and long-term reliability need more testing. The pointer currently stays within its current display.
 
 ## Install
 
@@ -28,7 +28,7 @@ Pointer movement and clicks have been confirmed on physical hardware. Advanced g
 4. Grant **Accessibility** permission so the app may post mouse events. Grant **Input Monitoring** if macOS requests it so the app can receive the USB touch reports. Quit and reopen the utility after granting permissions.
 5. Connect the NexDock by USB. Click the NexDock menu-bar item to see its device and event counters.
 
-If a new version stops receiving input, remove the old NexDockBridge entry in Privacy & Security → Input Monitoring, add the new app if prompted, and relaunch. The same may be necessary for Accessibility. Ad-hoc signatures change with updates.
+If an update stops receiving input or moving the cursor even though the permission toggle is enabled, quit the app, remove its stale entries in Privacy & Security → Input Monitoring and Accessibility, add the new app and grant the permissions again where requested. Quit and reopen the app after changing permissions. Ad-hoc signatures change with updates; a consistently Developer ID-signed release can reduce these recurring permission prompts.
 
 To stop the utility, choose Quit NexDockBridge in its menu. To launch at login, add the app manually under System Settings → General → Login Items. To uninstall, quit it, remove the app and revoke any permissions you granted.
 
@@ -43,7 +43,7 @@ cd NexDockBridge
 open build/NexDockBridge.app
 ```
 
-The script builds for the host architecture and SDK. Compatibility with older macOS versions is not guaranteed.
+The script builds for the host architecture and SDK. Compatibility with older macOS versions is not guaranteed. Run `./test.sh` to execute the drag regression test without posting real mouse events.
 
 ## Privacy and security
 
@@ -53,6 +53,6 @@ No kernel extension, administrator privileges, firmware modifications or system-
 
 ## Status and contributions
 
-Version 0.2 is an early community preview. If you report an issue, please include the NexDock model, macOS version, connection type and the HID device ID; do not include personal information. Pull requests and compatibility reports are welcome.
+Version 0.2.1 is an early community preview. It fixes physical-button dragging with two contacts (e.g. resizing a window while holding the left button) by prioritizing drag motion over scrolling and tracking moving contacts by ID. If you report an issue, please include the NexDock model, macOS version, connection type and the HID device ID; do not include personal information. Pull requests and compatibility reports are welcome.
 
 Licensed under the MIT License. Free to use and modify.
