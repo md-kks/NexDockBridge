@@ -56,3 +56,18 @@ No kernel extension, administrator privileges, firmware modifications or system-
 Version 0.2.1 is an early community preview. It fixes physical-button dragging with two contacts (e.g. resizing a window while holding the left button) by prioritizing drag motion over scrolling and tracking moving contacts by ID. If you report an issue, please include the NexDock model, macOS version, connection type and the HID device ID; do not include personal information. Pull requests and compatibility reports are welcome.
 
 Licensed under the MIT License. Free to use and modify.
+
+### Developer ID signing (maintainers)
+
+For distribution outside the Mac App Store, Apple recommends a Developer ID Application certificate and notarization. A consistent signing identity and bundle identifier also reduce permission resets between updates.
+
+After creating your own Developer ID Application certificate in Xcode (Settings > Accounts > Manage Certificates), build using:
+
+```sh
+security find-identity -v -p codesigning
+SIGN_IDENTITY="Developer ID Application: YOUR NAME (TEAMID)" ./build.sh
+```
+
+The signing option enables hardened runtime and a secure timestamp. For public distribution, submit the signed app archive to Apple's notarization service and staple the accepted ticket before packaging the final release. See [Apple's notarization documentation](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution).
+
+Signing credentials and private keys must remain in the maintainer's keychain, never in this repository. The current preview remains ad-hoc signed and is not notarized.
